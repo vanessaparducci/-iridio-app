@@ -50,7 +50,7 @@ const IRIDIO = () => {
     }
   };
 
-  const analyzeIridisPhoto = async (photoBase64, photoSide) => {
+const analyzeIridisPhoto = async (photoBase64, photoSide) => {
   try {
     setApiStatus({ status: 'analyzing', message: `Analizzando occhio ${photoSide === 'left' ? 'sinistro' : 'destro'}...` });
     
@@ -74,21 +74,6 @@ const IRIDIO = () => {
     return null;
   }
 };
-    setApiStatus({ status: 'success', message: `✓` });
-    return analysis;
-  } catch (err) {  
-    setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
-      setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
-      return null;
-    }
-  };
-
-  const HomeScreen = () => (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-8">
-      <div className="max-w-4xl mx-auto text-center mb-12">
-        <div className="inline-block bg-teal-600 text-white rounded-full p-4 mb-4">
-          <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" /><circle cx="12" cy="12" r="6" fill="currentColor" opacity="0.3" /></svg>
-        </div>
         <h1 className="text-5xl font-bold text-slate-900 mb-2">IRIDIO</h1>
         <p className="text-xl text-slate-600">Intelligenza Artificiale per Iridologia Olistica Avanzata</p>
       </div>
