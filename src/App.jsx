@@ -74,9 +74,10 @@ const IRIDIO = () => {
     return null;
   }
 };
-      setApiStatus({ status: 'success', message: `✓` });
-      return analysis;
-    } catch (err) {
+    setApiStatus({ status: 'success', message: `✓` });
+    return analysis;
+  } catch (err) {  
+    setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
       setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
       return null;
     }
