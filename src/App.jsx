@@ -51,44 +51,29 @@ const IRIDIO = () => {
   };
 
   const analyzeIridisPhoto = async (photoBase64, photoSide) => {
-    try {
-      setApiStatus({ status: 'analyzing', message: `Analizzando occhio ${photoSide === 'left' ? 'sinistro' : 'destro'}...` });
-      
-      if (!photoBase64 || !photoBase64.includes('base64')) {
-        throw new Error('Foto non valida');
-      }
+  try {
+    setApiStatus({ status: 'analyzing', message: `Analizzando occhio ${photoSide === 'left' ? 'sinistro' : 'destro'}...` });
+    
+    if (!photoBase64 || !photoBase64.includes('base64')) {
+      throw new Error('Foto non valida');
+    }
 
-      const base64Data = photoBase64.split(',')[1];
-      const prompt = `Tu sei IRIDIO, Intelligenza Artificiale per Iridologia Olistica Avanzata. Analizza questa foto dell'iride secondo i 6 PILASTRI: 1) Iridologia Organica, 2) Psicosomatica, 3) Energetica, 4) Cronorischio, 5) Sclera, 6) Sistemica Familiare. Rispondi SOLO in JSON con chiavi: organic, psychosomatic, energetic, chronorisk, sclera, familial, summary, recommendations. NON aggiungere testo.`;
+    const response = await fetch('/.netlify/functions/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photoBase64, photoSide })
+    });
 
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 2500,
-          messages: [{
-            role: "user",
-            content: [{
-              type: "image",
-              source: { type: "base64", media_type: "image/jpeg", data: base64Data }
-            }, { type: "text", text: prompt }]
-          }]
-        })
-      });
+    if (!response.ok) throw new Error(`Errore: ${response.status}`);
+    const analysis = await response.json();
 
-      if (!response.ok) throw new Error(`API Error: ${response.status}`);
-      const data = await response.json();
-      const analysisText = data.content[0].text;
-      
-      let analysis = {};
-      try {
-        const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-        analysis = JSON.parse(jsonMatch[0]);
-      } catch (e) {
-        analysis = { organic: analysisText, psychosomatic: "", energetic: "", chronorisk: "", sclera: "", familial: "", summary: "Analisi completata", recommendations: "" };
-      }
-
+    setApiStatus({ status: 'success', message: `✓` });
+    return analysis;
+  } catch (err) {
+    setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
+    return null;
+  }
+};
       setApiStatus({ status: 'success', message: `✓` });
       return analysis;
     } catch (err) {
