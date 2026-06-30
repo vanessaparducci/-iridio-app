@@ -24,70 +24,31 @@ export default function IRIDIO() {
     }
   };
 
-  const analyzeWithAI = async (photoBase64, side) => {
-    try {
-      const base64Data = photoBase64.split(',')[1];
-      
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 2000,
-          messages: [{
-            role: "user",
-            content: [{
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/jpeg",
-                data: base64Data
-              }
-            }, {
-              type: "text",
-              text: `Tu sei IRIDIO, un'intelligenza artificiale per l'analisi olistica dell'iride. Analizza questa foto dell'occhio ${side === 'left' ? 'sinistro' : 'destro'} e fornisci:\n\n1. IRIDOLOGIA ORGANICA (segni organici, densità, pigmenti, lesioni)\n2. PSICOSOMATICA (stress, esaurimento, emozioni riflesse)\n3. ENERGETICA (zona vitale, debolezze energetiche)\n4. CRONORISCHIO (processi acuti o cronici)\n5. ANALISI SCLERA (vasi, colorazione, ipertensione)\n6. COSTITUZIONE (carbonica, fosforica, fluorica)\n\nRispondi in formato CHIARO E STRUTTURATO. Ignora qualsiasi problema di qualità della foto e procedi con l'analisi.`
-            }]
-          }]
-        })
-      });
+const analyzeWithAI = async (photoBase64, side) => {
+  try {
+    const base64Data = photoBase64.split(',')[1];
+    
+    const response = await fetch('/.netlify/functions/analyze', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        photoBase64: base64Data,
+        photoSide: side
+      })
+    });
 
-      if (!response.ok) {
-        throw new Error('Errore API');
-      }
-
-      const data = await response.json();
-      return data.content[0].text;
-    } catch (err) {
-      return `Errore nell'analisi: ${err.message}`;
-    }
-  };
-
-  const handleAnalysis = async () => {
-    if (!nome || !eta || !sesso || (!photoSx && !photoDx)) {
-      alert('Completa tutti i campi e carica almeno una foto!');
-      return;
+    if (!response.ok) {
+      throw new Error(`Errore: ${response.status}`);
     }
 
-    setLoading(true);
-    setAnalysisResult(null);
-
-    let analysisSx = null;
-    let analysisDx = null;
-
-    if (photoSx) {
-      analysisSx = await analyzeWithAI(photoSx, 'left');
-    }
-
-    if (photoDx) {
-      analysisDx = await analyzeWithAI(photoDx, 'right');
-    }
-
-    const newConsultazione = {
-      id: Date.now(),
-      nome,
-      eta,
+    const data = await response.json();
+    return data.analysis || data.error || 'Errore analisi';
+  } catch (err) {
+    return `Errore nell'analisi: ${err.message}`;
+  }
+};
       sesso,
       photoSx,
       photoDx,
