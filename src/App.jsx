@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Plus, Archive, Trash2, ArrowLeft, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, Plus, Archive, Trash2, ArrowLeft } from 'lucide-react';
 
-export default function App() {
+export default function IRIDIO() {
   const [screen, setScreen] = useState('home');
   const [nome, setNome] = useState('');
   const [eta, setEta] = useState('');
@@ -9,22 +9,8 @@ export default function App() {
   const [photoSx, setPhotoSx] = useState(null);
   const [photoDx, setPhotoDx] = useState(null);
   const [consultazioni, setConsultazioni] = useState([]);
-  const [apiStatus, setApiStatus] = useState({ status: 'idle', message: '' });
-
-  useEffect(() => {
-    loadConsultazioni();
-  }, []);
-
-  const loadConsultazioni = async () => {
-    try {
-      const result = await window.storage.get('consultazioni');
-      if (result) {
-        setConsultazioni(JSON.parse(result.value));
-      }
-    } catch (err) {
-      console.log('Nessuna consultazione salvata');
-    }
-  };
+  const [loading, setLoading] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
 
   const handlePhotoUpload = (e, side) => {
     const file = e.target.files[0];
@@ -38,48 +24,64 @@ export default function App() {
     }
   };
 
-  const analyzeIridisPhoto = async (photoBase64, photoSide) => {
+  const analyzeWithAI = async (photoBase64, side) => {
     try {
-      setApiStatus({ status: 'analyzing', message: `Analizzando occhio ${photoSide === 'left' ? 'sinistro' : 'destro'}...` });
+      const base64Data = photoBase64.split(',')[1];
       
-      if (!photoBase64 || !photoBase64.includes('base64')) {
-        throw new Error('Foto non valida');
-      }
-
-      const response = await fetch('/.netlify/functions/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photoBase64, photoSide })
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 2000,
+          messages: [{
+            role: "user",
+            content: [{
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/jpeg",
+                data: base64Data
+              }
+            }, {
+              type: "text",
+              text: `Tu sei IRIDIO, un'intelligenza artificiale per l'analisi olistica dell'iride. Analizza questa foto dell'occhio ${side === 'left' ? 'sinistro' : 'destro'} e fornisci:\n\n1. IRIDOLOGIA ORGANICA (segni organici, densità, pigmenti, lesioni)\n2. PSICOSOMATICA (stress, esaurimento, emozioni riflesse)\n3. ENERGETICA (zona vitale, debolezze energetiche)\n4. CRONORISCHIO (processi acuti o cronici)\n5. ANALISI SCLERA (vasi, colorazione, ipertensione)\n6. COSTITUZIONE (carbonica, fosforica, fluorica)\n\nRispondi in formato CHIARO E STRUTTURATO. Ignora qualsiasi problema di qualità della foto e procedi con l'analisi.`
+            }]
+          }]
+        })
       });
 
-      if (!response.ok) throw new Error(`Errore: ${response.status}`);
-      const analysis = await response.json();
+      if (!response.ok) {
+        throw new Error('Errore API');
+      }
 
-      setApiStatus({ status: 'success', message: `✓` });
-      return analysis;
+      const data = await response.json();
+      return data.content[0].text;
     } catch (err) {
-      setApiStatus({ status: 'error', message: `Errore: ${err.message}` });
-      return null;
+      return `Errore nell'analisi: ${err.message}`;
     }
   };
 
-  const handleSubmit = async () => {
+  const handleAnalysis = async () => {
     if (!nome || !eta || !sesso || (!photoSx && !photoDx)) {
       alert('Completa tutti i campi e carica almeno una foto!');
       return;
     }
 
-    setApiStatus({ status: 'analyzing', message: 'Analisi in corso...' });
+    setLoading(true);
+    setAnalysisResult(null);
 
     let analysisSx = null;
     let analysisDx = null;
 
     if (photoSx) {
-      analysisSx = await analyzeIridisPhoto(photoSx, 'left');
+      analysisSx = await analyzeWithAI(photoSx, 'left');
     }
 
     if (photoDx) {
-      analysisDx = await analyzeIridisPhoto(photoDx, 'right');
+      analysisDx = await analyzeWithAI(photoDx, 'right');
     }
 
     const newConsultazione = {
@@ -91,99 +93,202 @@ export default function App() {
       photoDx,
       analysisSx,
       analysisDx,
-      data: new Date().toLocaleDateString('it-IT')
+      data: new Date().toLocaleDateString('it-IT'),
+      timestamp: new Date().toLocaleTimeString('it-IT')
     };
 
-    const updated = [...consultazioni, newConsultazione];
-    setConsultazioni(updated);
-    await window.storage.set('consultazioni', JSON.stringify(updated));
-
-    setNome('');
-    setEta('');
-    setSesso('');
-    setPhotoSx(null);
-    setPhotoDx(null);
-    setApiStatus({ status: 'success', message: 'Consultazione salvata!' });
-    
-    setTimeout(() => {
-      setScreen('home');
-      setApiStatus({ status: 'idle', message: '' });
-    }, 2000);
+    setConsultazioni([...consultazioni, newConsultazione]);
+    setAnalysisResult(newConsultazione);
+    setLoading(false);
   };
 
-  const deleteConsultazione = async (id) => {
-    const updated = consultazioni.filter(c => c.id !== id);
-    setConsultazioni(updated);
-    await window.storage.set('consultazioni', JSON.stringify(updated));
+  const deleteConsultazione = (id) => {
+    setConsultazioni(consultazioni.filter(c => c.id !== id));
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-teal-50 to-amber-50 p-4">
-      {screen === 'home' && (
-        <div className="max-w-md mx-auto pt-8">
-          <div className="text-center mb-8">
-            <h1 className="text-5xl font-bold text-slate-900 mb-2">IRIDIO</h1>
-            <p className="text-xl text-slate-600">Intelligenza Artificiale per Iridologia Olistica Avanzata</p>
-          </div>
-
-          <div className="space-y-4">
-            <button
-              onClick={() => setScreen('consultation')}
-              className="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-4 px-6 rounded-lg flex items-center justify-center gap-2"
-            >
-              <Plus size={24} /> Nuova Consultazione
-            </button>
-
-            <button
-              onClick={() => setScreen('archive')}
-              className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-4 px-6 rounded-lg flex items-center justify-center gap-2"
-            >
-              <Archive size={24} /> Archivio ({consultazioni.length})
-            </button>
-          </div>
+  // HOME SCREEN
+  if (screen === 'home') {
+    return (
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '2rem 1rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{ fontSize: '48px', marginBottom: '0.5rem' }}>👁️</div>
+          <h1 style={{ fontSize: '32px', fontWeight: 500, margin: '0 0 0.5rem 0', color: 'var(--text-primary)' }}>IRIDIO</h1>
+          <p style={{ fontSize: '14px', color: 'var(--text-secondary)', margin: 0 }}>Intelligenza Artificiale per Iridologia Olistica Avanzata</p>
         </div>
-      )}
 
-      {screen === 'consultation' && (
-        <div className="max-w-md mx-auto pt-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <button
-            onClick={() => setScreen('home')}
-            className="mb-4 flex items-center gap-2 text-teal-600 hover:text-teal-700"
+            onClick={() => {
+              setScreen('consultation');
+              setAnalysisResult(null);
+              setNome('');
+              setEta('');
+              setSesso('');
+              setPhotoSx(null);
+              setPhotoDx(null);
+            }}
+            style={{
+              padding: '1rem',
+              backgroundColor: 'var(--fill-accent)',
+              color: 'var(--on-accent)',
+              border: 'none',
+              borderRadius: 'var(--radius)',
+              fontSize: '16px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
           >
-            <ArrowLeft size={20} /> Torna
+            <Plus size={20} /> Nuova Consultazione
           </button>
 
-          <div className="bg-white rounded-lg shadow-lg p-6 space-y-4">
-            <h2 className="text-2xl font-bold text-slate-900">Nuova Consultazione</h2>
+          <button
+            onClick={() => setScreen('archive')}
+            style={{
+              padding: '1rem',
+              backgroundColor: 'var(--surface-1)',
+              color: 'var(--text-primary)',
+              border: '0.5px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              fontSize: '16px',
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}
+          >
+            <Archive size={20} /> Archivio ({consultazioni.length})
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
+  // CONSULTATION SCREEN
+  if (screen === 'consultation') {
+    return (
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '2rem 1rem' }}>
+        <button
+          onClick={() => setScreen('home')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-accent)',
+            cursor: 'pointer',
+            fontSize: '14px',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          ← Torna
+        </button>
+
+        {analysisResult ? (
+          <div style={{ backgroundColor: 'var(--surface-1)', borderRadius: '12px', padding: '1.5rem', border: '0.5px solid var(--border)' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 500, margin: '0 0 1rem 0', color: 'var(--text-primary)' }}>
+              Analisi completata ✓
+            </h2>
+
+            <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '0.5px solid var(--border)' }}>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0 }}>{analysisResult.nome} • {analysisResult.eta} anni • {analysisResult.sesso === 'F' ? 'Donna' : 'Uomo'}</p>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>{analysisResult.data} - {analysisResult.timestamp}</p>
+            </div>
+
+            {analysisResult.photoSx && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 500, margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>👁️ Foto Occhio Sinistro</h3>
+                <img src={analysisResult.photoSx} alt="Occhio sinistro" style={{ width: '100%', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', marginBottom: '1rem', maxHeight: '200px', objectFit: 'cover' }} />
+              </div>
+            )}
+
+            {analysisResult.analysisSx && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 500, margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>📊 Analisi Occhio Sinistro</h3>
+                <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', backgroundColor: 'var(--surface-2)', padding: '1rem', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {analysisResult.analysisSx}
+                </div>
+              </div>
+            )}
+
+            {analysisResult.photoDx && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 500, margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>👁️ Foto Occhio Destro</h3>
+                <img src={analysisResult.photoDx} alt="Occhio destro" style={{ width: '100%', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', marginBottom: '1rem', maxHeight: '200px', objectFit: 'cover' }} />
+              </div>
+            )}
+
+            {analysisResult.analysisDx && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '14px', fontWeight: 500, margin: '0 0 0.75rem 0', color: 'var(--text-primary)' }}>📊 Analisi Occhio Destro</h3>
+                <div style={{ fontSize: '13px', color: 'var(--text-primary)', lineHeight: '1.6', backgroundColor: 'var(--surface-2)', padding: '1rem', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', maxHeight: '300px', overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {analysisResult.analysisDx}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => {
+                setAnalysisResult(null);
+                setNome('');
+                setEta('');
+                setSesso('');
+                setPhotoSx(null);
+                setPhotoDx(null);
+              }}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: 'var(--fill-accent)',
+                color: 'var(--on-accent)',
+                border: 'none',
+                borderRadius: 'var(--radius)',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: 'pointer'
+              }}
+            >
+              Nuova Consultazione
+            </button>
+          </div>
+        ) : (
+          <div style={{ backgroundColor: 'var(--surface-1)', borderRadius: '12px', padding: '1.5rem', border: '0.5px solid var(--border)' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 500, margin: '0 0 1.5rem 0', color: 'var(--text-primary)' }}>Nuova Consultazione</h2>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Nome</label>
               <input
                 type="text"
                 value={nome}
                 onChange={(e) => setNome(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2"
-                placeholder="Nome"
+                placeholder="Nome cliente"
+                style={{ width: '100%', padding: '0.75rem', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '14px', boxSizing: 'border-box' }}
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Età</label>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Età</label>
               <input
                 type="number"
                 value={eta}
                 onChange={(e) => setEta(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2"
                 placeholder="Età"
+                style={{ width: '100%', padding: '0.75rem', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '14px', boxSizing: 'border-box' }}
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Sesso</label>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Sesso</label>
               <select
                 value={sesso}
                 onChange={(e) => setSesso(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2"
+                style={{ width: '100%', padding: '0.75rem', border: '0.5px solid var(--border)', borderRadius: 'var(--radius)', fontSize: '14px', boxSizing: 'border-box' }}
               >
                 <option value="">Seleziona</option>
                 <option value="F">Femmina</option>
@@ -191,91 +296,122 @@ export default function App() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Foto Iride Sinistra</label>
-              <label className="flex items-center justify-center w-full border-2 border-dashed border-teal-300 rounded-lg p-4 cursor-pointer hover:bg-teal-50">
-                <Upload size={24} className="text-teal-500" />
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Foto Iride Sinistra</label>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', border: '2px dashed var(--border-accent)', borderRadius: 'var(--radius)', padding: '1.5rem', cursor: 'pointer', backgroundColor: 'var(--surface-2)' }}>
+                <Upload size={20} style={{ color: 'var(--text-accent)', marginRight: '0.5rem' }} />
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => handlePhotoUpload(e, 'sx')}
-                  className="hidden"
+                  style={{ display: 'none' }}
                 />
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Carica foto</span>
               </label>
-              {photoSx && <p className="text-sm text-green-600 mt-2">✓ Foto caricata</p>}
+              {photoSx && (
+                <div style={{ marginTop: '1rem' }}>
+                  <img src={photoSx} alt="Anteprima sinistro" style={{ width: '100%', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', maxHeight: '150px', objectFit: 'cover' }} />
+                  <p style={{ fontSize: '12px', color: 'var(--text-success)', margin: '0.5rem 0 0 0' }}>✓ Foto caricata</p>
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Foto Iride Destra</label>
-              <label className="flex items-center justify-center w-full border-2 border-dashed border-amber-300 rounded-lg p-4 cursor-pointer hover:bg-amber-50">
-                <Upload size={24} className="text-amber-500" />
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Foto Iride Destra</label>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', border: '2px dashed var(--border)', borderRadius: 'var(--radius)', padding: '1.5rem', cursor: 'pointer', backgroundColor: 'var(--surface-2)' }}>
+                <Upload size={20} style={{ color: 'var(--text-secondary)', marginRight: '0.5rem' }} />
                 <input
                   type="file"
                   accept="image/*"
                   onChange={(e) => handlePhotoUpload(e, 'dx')}
-                  className="hidden"
+                  style={{ display: 'none' }}
                 />
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>Carica foto</span>
               </label>
-              {photoDx && <p className="text-sm text-green-600 mt-2">✓ Foto caricata</p>}
+              {photoDx && (
+                <div style={{ marginTop: '1rem' }}>
+                  <img src={photoDx} alt="Anteprima destro" style={{ width: '100%', borderRadius: 'var(--radius)', border: '0.5px solid var(--border)', maxHeight: '150px', objectFit: 'cover' }} />
+                  <p style={{ fontSize: '12px', color: 'var(--text-success)', margin: '0.5rem 0 0 0' }}>✓ Foto caricata</p>
+                </div>
+              )}
             </div>
-
-            {apiStatus.status !== 'idle' && (
-              <div className={`p-4 rounded-lg text-center ${
-                apiStatus.status === 'success' ? 'bg-green-100 text-green-700' :
-                apiStatus.status === 'error' ? 'bg-red-100 text-red-700' :
-                'bg-blue-100 text-blue-700'
-              }`}>
-                {apiStatus.message}
-              </div>
-            )}
 
             <button
-              onClick={handleSubmit}
-              disabled={apiStatus.status === 'analyzing'}
-              className="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-lg disabled:opacity-50"
+              onClick={handleAnalysis}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                backgroundColor: loading ? 'var(--fill-disabled)' : 'var(--fill-accent)',
+                color: loading ? 'var(--text-disabled)' : 'var(--on-accent)',
+                border: 'none',
+                borderRadius: 'var(--radius)',
+                fontSize: '14px',
+                fontWeight: 500,
+                cursor: loading ? 'not-allowed' : 'pointer'
+              }}
             >
-              {apiStatus.status === 'analyzing' ? 'Analisi in corso...' : 'Analizza'}
+              {loading ? 'Analisi in corso...' : 'Analizza'}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    );
+  }
 
-      {screen === 'archive' && (
-        <div className="max-w-md mx-auto pt-4">
-          <button
-            onClick={() => setScreen('home')}
-            className="mb-4 flex items-center gap-2 text-teal-600 hover:text-teal-700"
-          >
-            <ArrowLeft size={20} /> Torna
-          </button>
+  // ARCHIVE SCREEN
+  if (screen === 'archive') {
+    return (
+      <div style={{ maxWidth: '600px', margin: '0 auto', padding: '2rem 1rem' }}>
+        <button
+          onClick={() => setScreen('home')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--text-accent)',
+            cursor: 'pointer',
+            fontSize: '14px',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          ← Torna
+        </button>
 
-          <h2 className="text-2xl font-bold text-slate-900 mb-4">Archivio Consultazioni</h2>
+        <h2 style={{ fontSize: '20px', fontWeight: 500, margin: '0 0 1.5rem 0', color: 'var(--text-primary)' }}>Archivio Consultazioni</h2>
 
-          {consultazioni.length === 0 ? (
-            <p className="text-slate-600">Nessuna consultazione salvata</p>
-          ) : (
-            <div className="space-y-4">
-              {consultazioni.map((c) => (
-                <div key={c.id} className="bg-white rounded-lg shadow-lg p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-bold text-slate-900">{c.nome}</h3>
-                      <p className="text-sm text-slate-600">{c.eta} anni - {c.sesso === 'F' ? 'Donna' : 'Uomo'}</p>
-                      <p className="text-xs text-slate-500">{c.data}</p>
-                    </div>
-                    <button
-                      onClick={() => deleteConsultazione(c.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={20} />
-                    </button>
-                  </div>
+        {consultazioni.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Nessuna consultazione salvata</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {consultazioni.map((c) => (
+              <div key={c.id} style={{ backgroundColor: 'var(--surface-1)', borderRadius: '12px', padding: '1rem', border: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: 500, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>{c.nome}</h3>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '0' }}>{c.eta} anni • {c.sesso === 'F' ? 'Donna' : 'Uomo'}</p>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0.25rem 0 0 0' }}>{c.data}</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+                <button
+                  onClick={() => deleteConsultazione(c.id)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-danger)',
+                    cursor: 'pointer',
+                    padding: '0',
+                    marginLeft: '1rem'
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 }
+   
